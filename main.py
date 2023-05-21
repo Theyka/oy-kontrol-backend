@@ -36,9 +36,6 @@ def sorgula(tckn):
     data_def = f"__EVENTTARGET=&__EVENTARGUMENT=&__LASTFOCUS=&__VIEWSTATE=ktJeM064phMGqt8I3LVn3dV8zHmaT%2BCM2dGpeCQEsYyuY2xZAThrTCyAmWEdmwR1hqez9aAxxBEsSx2Dc7q8SSJVYjM%3D&__VIEWSTATEGENERATOR=CA0B0334&__EVENTVALIDATION=jMsEFikyE5EkKn1n2%2FznrsvzXvQiMFN1EPBObGeLSKpt%2BW3yUDKzW%2BXI3OcuN1g4%2BKsuQ7t5XZhwb65GMCB4HYGjqJP2wEPkxhSvcRBUwpD886hMDtvlePrQ6BG7wl71hpMm5w%2BRaeeHM9L7oJDY0ThfUM3NI31JcC7TVspBq7lSglrs&rdveriKaynagi=1&txtTCKN={tckn}&btnSorgula=SORGULA"
     response_def = requests.post(url, headers=headers_def, data=data_def)
 
-
-
-
     headers = {
         "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "accept-language": "en-US,en;q=0.6",
@@ -104,11 +101,12 @@ CORS_SETTINGS = {'allow_origin': '*'}
 quart_app = cors(app, **CORS_SETTINGS)
 
 
-@app.route("/chpfetch")
+@app.route("/get_info")
 async def chpfetch():
     if request.args.get('tckn'):
         try:
-            return Response(response=json.dumps(sorgula(request.args.get('tckn')), ensure_ascii=False), mimetype="application/json")
+            return Response(response=json.dumps(sorgula(request.args.get('tckn')), ensure_ascii=False),
+                            mimetype="application/json")
         except Exception as error:
             return jsonify({'error': error, 'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
     else:
@@ -122,15 +120,22 @@ async def oyveotesi():
             try:
                 conn = sqlite3.connect('ovodata.sqlite')
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM ovo_submissions WHERE city_name = ? AND district_name = ? AND ballot_box_id = ?", (request.args.get('city_name'), request.args.get('district_name'), request.args.get('ballot_box_id')))
-                row = cursor.fetchone()
+                get_data = cursor.execute(
+                    "SELECT * FROM ovo_submissions WHERE city_name = ? AND district_name = ? AND ballot_box_id = ?", (
+                    request.args.get('city_name'), request.args.get('district_name'),
+                    request.args.get('ballot_box_id')))
+                row = get_data.fetchone()
 
+                cursor.execute("UPDATE status SET requests = requests+1")
+                conn.commit()
+                conn.close()
                 if row is None:
-                    return jsonify({'error': 'no information', 'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+                    return jsonify(
+                        {'error': 'no information', 'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
                 else:
                     return jsonify({'id': row[0], 'city_name': row[1], 'district_name': row[2], 'ballot_box_id': row[3],
-                               'image_url': row[4], 'recep_tayyip': row[5], 'muharrem_ince': row[6],
-                               'kemal_kilicdaroglu': row[7], 'sinan_ogan': row[8]})
+                                    'image_url': row[4], 'recep_tayyip': row[5], 'muharrem_ince': row[6],
+                                    'kemal_kilicdaroglu': row[7], 'sinan_ogan': row[8]})
             except Exception as error:
                 return jsonify({'error': error, 'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
         else:
@@ -138,7 +143,23 @@ async def oyveotesi():
     except Exception as error:
         return jsonify({'error': error, 'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
 
+
+@app.route("/status")
+async def status():
+    try:
+        conn = sqlite3.connect('ovodata.sqlite')
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM status")
+        row = cursor.fetchone()
+        if row is None:
+            return jsonify({'error': 'no information', 'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+        else:
+            return jsonify({'requests': row[0]})
+    except Exception as error:
+        return jsonify({'error': error, 'time': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+
+
 if __name__ == "__main__":
     config = Config()
     config.bind = "0.0.0.0:25696"
-    asyncio.run(serve(app, config=config))
+    asyncio.run(serve(quart_app, config=config))
